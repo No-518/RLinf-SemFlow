@@ -14,6 +14,7 @@
 
 import json
 import os
+from pathlib import Path
 
 import torch
 from omegaconf import DictConfig
@@ -194,8 +195,17 @@ def get_model(model_path, cfg: DictConfig, override_config_kwargs=None):
             for key, val in override_config_kwargs.items():
                 actor_model_config.__dict__[key] = val
         # load model
-        checkpoint_dir = download.maybe_download(str(model_path))
-        weight_path = os.path.join(checkpoint_dir, "model.safetensors")
+        checkpoint_dir = Path(download.maybe_download(str(model_path)))
+        weight_path = checkpoint_dir / "model.safetensors"
+        if not weight_path.exists():
+            # Handle Hugging Face cache layout where weights live under snapshots/<rev>/.
+            candidates = sorted(checkpoint_dir.glob("**/model.safetensors"))
+            if not candidates:
+                raise FileNotFoundError(
+                    f"Unable to locate model.safetensors under {checkpoint_dir}"
+                )
+            weight_path = candidates[0]
+            checkpoint_dir = weight_path.parent
         model: OpenPi0ForRLActionPrediction = OpenPi0ForRLActionPrediction(
             actor_model_config
         )
@@ -253,7 +263,6 @@ def get_model(model_path, cfg: DictConfig, override_config_kwargs=None):
             add_value_head=cfg.add_value_head,
         )
     elif cfg.model_name == "gr00t":
-        from pathlib import Path
 
         from rlinf.utils.patcher import Patcher
 
